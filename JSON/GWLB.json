@@ -1,0 +1,327 @@
+{
+	"AWSTemplateFormatVersion": "2010-09-09",
+	"Description": "(v2.6) AWS CFT to deploy an AWS & Fgt 201 Level Workshop",
+	"Metadata": {
+	},
+	"Parameters": {
+	},
+	"Mappings": {
+	},
+	"Conditions": {
+	},
+	"Resources": {
+		"InspectionStack": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": {
+					"Fn::Sub": "https://hacorp-cloud-cse-workshop-us-east-1.s3.amazonaws.com/aws-fgt-201/SecurityVPC_FGT_GWLB_MultiAZ.template.json"
+				},
+				"Parameters": {
+					"StackName": "NGFW",
+					"AZs": {
+						"Fn::Join": [
+							", ",
+							[
+								{
+									"Fn::Select": [
+										0,
+										{
+											"Fn::GetAZs": {
+												"Ref": "AWS::Region"
+											}
+										}
+									]
+								},
+								{
+									"Fn::Select": [
+										1,
+										{
+											"Fn::GetAZs": {
+												"Ref": "AWS::Region"
+											}
+										}
+									]
+								}
+							]
+						]
+					}
+				}
+			}
+		},
+		"VPCA": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": {
+					"Fn::Sub": "https://hacorp-cloud-cse-workshop-us-east-1.s3.amazonaws.com/aws-fgt-201/SpokeVPC_GWLBe_MultiAZ.template.json"
+				},
+				"Parameters": {
+					"StackName": "VPC-A",
+					"AZs": {
+						"Fn::Join": [
+							", ",
+							[
+								{
+									"Fn::Select": [
+										0,
+										{
+											"Fn::GetAZs": {
+												"Ref": "AWS::Region"
+											}
+										}
+									]
+								},
+								{
+									"Fn::Select": [
+										1,
+										{
+											"Fn::GetAZs": {
+												"Ref": "AWS::Region"
+											}
+										}
+									]
+								}
+							]
+						]
+					},
+					"VPCCIDR": "10.1.0.0/16",
+					"PublicSubnetCIDRs": "10.1.1.0/24, 10.1.10.0/24",
+					"PrivateSubnetCIDRs": "10.1.2.0/24, 10.1.20.0/24",
+					"GwlbSubnetCIDRs": "10.1.3.0/24, 10.1.30.0/24",
+					"VpcEndpointServiceName": {
+						"Fn::GetAtt": [
+							"InspectionStack",
+							"Outputs.VpcEndpointServiceName"
+						]
+					}
+				}
+			}
+		},
+		"VPCB": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": {
+					"Fn::Sub": "https://hacorp-cloud-cse-workshop-us-east-1.s3.amazonaws.com/aws-fgt-201/SpokeVPC_GWLBe_Centralized_DualAZ.template.json"
+				},
+				"Parameters": {
+					"StackName": "VPC-B",
+					"VPCCIDR": "10.2.0.0/16",
+					"PrivateSubnet1": "10.2.2.0/24",
+					"PrivateSubnet2": "10.2.20.0/24",
+					"TransitGateway": {
+						"Fn::GetAtt": [
+							"InspectionStack",
+							"Outputs.TransitGateway"
+						]
+					},
+					"TransitGatewaySecurityRtb": {
+						"Fn::GetAtt": [
+							"InspectionStack",
+							"Outputs.TransitGatewaySecurityRtb"
+						]
+					},
+					"TransitGatewaySpokeRtb": {
+						"Fn::GetAtt": [
+							"InspectionStack",
+							"Outputs.TransitGatewaySpokeRtb"
+						]
+					}
+				}
+			}
+		},
+		"VPCC": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": {
+					"Fn::Sub": "https://hacorp-cloud-cse-workshop-us-east-1.s3.amazonaws.com/aws-fgt-201/SpokeVPC_GWLBe_Centralized_DualAZ.template.json"
+				},
+				"Parameters": {
+					"StackName": "VPC-C",
+					"VPCCIDR": "10.3.0.0/16",
+					"PrivateSubnet1": "10.3.2.0/24",
+					"PrivateSubnet2": "10.3.20.0/24",
+					"TransitGateway": {
+						"Fn::GetAtt": [
+							"InspectionStack",
+							"Outputs.TransitGateway"
+						]
+					},
+					"TransitGatewaySecurityRtb": {
+						"Fn::GetAtt": [
+							"InspectionStack",
+							"Outputs.TransitGatewaySecurityRtb"
+						]
+					},
+					"TransitGatewaySpokeRtb": {
+						"Fn::GetAtt": [
+							"InspectionStack",
+							"Outputs.TransitGatewaySpokeRtb"
+						]
+					}
+				}
+			}
+		},
+		"PublicNLB1": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": {
+					"Fn::Sub": "https://hacorp-cloud-cse-workshop-us-east-1.s3.amazonaws.com/aws-fgt-201/ELBv2_ExistingVPC.template.json"
+				},
+				"Parameters": {
+					"StackName": "PublicNLB1",
+					"VPCID": {
+						"Fn::GetAtt": "VPCA.Outputs.VPCID"
+					},
+					"PubliclyAvailable": "Yes",
+					"ELBv2Type": "network",
+					"Encrypted": "Yes",
+					"Subnet1": {
+						"Fn::GetAtt": "VPCA.Outputs.PublicSub1"
+					},
+					"Subnet2": {
+						"Fn::GetAtt": "VPCA.Outputs.PublicSub2"
+					},
+					"Target1": {
+						"Fn::GetAtt": "InstanceA.Outputs.InstanceID"
+					}
+				}
+			}
+		},
+		"InstanceA": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": {
+					"Fn::Sub": "https://hacorp-cloud-cse-workshop-us-east-1.s3.amazonaws.com/aws-fgt-201/EC2Workload_ExistingVPC.template.json"
+				},
+				"Parameters": {
+					"StackName": "Instance-A",
+					"VPCID": {
+						"Fn::GetAtt": "VPCA.Outputs.VPCID"
+					},
+					"Subnet": {
+						"Fn::GetAtt": "VPCA.Outputs.PrivateSub1"
+					},
+					"InstanceIP": "10.1.2.10",
+					"PubliclyAvailable": "No",
+					"CIDRForInstanceAccess": "0.0.0.0/0",
+					"TagEnv": "test",
+					"TagAppId": "aus-twf-wrk1",
+					"TagAppRole": "web",
+					"TagAppTier": "frontend",
+					"TagSDNGroup": "group1"
+				}
+			}
+		},
+		"InstanceB": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": {
+					"Fn::Sub": "https://hacorp-cloud-cse-workshop-us-east-1.s3.amazonaws.com/aws-fgt-201/EC2Workload_ExistingVPC.template.json"
+				},
+				"Parameters": {
+					"StackName": "Instance-B",
+					"VPCID": {
+						"Fn::GetAtt": "VPCB.Outputs.VPCID"
+					},
+					"Subnet": {
+						"Fn::GetAtt": "VPCB.Outputs.PrivateSub1"
+					},
+					"InstanceIP": "10.2.2.10",
+					"PubliclyAvailable": "No",
+					"CIDRForInstanceAccess": "0.0.0.0/0",
+					"TagEnv": "test",
+					"TagAppId": "aus-tab-wrk1",
+					"TagAppRole": "api",
+					"TagAppTier": "backend",
+					"TagSDNGroup": "group2"
+				}
+			}
+		},
+		"InstanceC": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": {
+					"Fn::Sub": "https://hacorp-cloud-cse-workshop-us-east-1.s3.amazonaws.com/aws-fgt-201/EC2Workload_ExistingVPC.template.json"
+				},
+				"Parameters": {
+					"StackName": "Instance-C",
+					"VPCID": {
+						"Fn::GetAtt": "VPCC.Outputs.VPCID"
+					},
+					"Subnet": {
+						"Fn::GetAtt": "VPCC.Outputs.PrivateSub1"
+					},
+					"InstanceIP": "10.3.2.10",
+					"PubliclyAvailable": "No",
+					"CIDRForInstanceAccess": "0.0.0.0/0",
+					"TagEnv": "prod",
+					"TagAppId": "aus-pwf-wrk1",
+					"TagAppRole": "web",
+					"TagAppTier": "frontend",
+					"TagSDNGroup": "group2"
+				}
+			}
+		},
+		"Ec2Console": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": {
+					"Fn::Sub": "https://hacorp-cloud-cse-workshop-us-east-1.s3.amazonaws.com/aws-fgt-201/EC2ConsoleEnabler.template.json"
+				}
+			}
+		}
+	},
+	"Outputs": {
+		"Username": {
+			"Value": {
+				"Fn::GetAtt": [
+					"InspectionStack",
+					"Outputs.Username"
+				]
+			},
+			"Description": "Username for the Fortigates"
+		},
+		"Password": {
+			"Value": {
+				"Fn::Base64": {
+					"Ref": "AWS::AccountId"
+				}
+			},
+			"Description": "Initial password for the FortiGates"
+		},
+		"FGT1LoginURL": {
+			"Value": {
+				"Fn::GetAtt": [
+					"InspectionStack",
+					"Outputs.FortiGate1aLoginURL"
+				]
+			},
+			"Description": "Login URL for the FGT in AZ1"
+		},
+		"FGT2LoginURL": {
+			"Value": {
+				"Fn::GetAtt": [
+					"InspectionStack",
+					"Outputs.FortiGate2aLoginURL"
+				]
+			},
+			"Description": "Login URL for the FGT in AZ2"
+		},
+		"Application1URL": {
+			"Value": {
+				"Fn::Join": [
+					"",
+					[
+						"http://",
+						{
+							"Fn::GetAtt": [
+								"PublicNLB1",
+								"Outputs.DNSName"
+							]
+						}
+					]
+				]
+			},
+			"Description": "Application 1 URL"
+		}
+	}
+}

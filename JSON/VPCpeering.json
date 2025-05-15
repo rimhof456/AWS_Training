@@ -1,0 +1,266 @@
+{
+	"AWSTemplateFormatVersion": "2010-09-09",
+	"Description": "(v2.7) AWS CFT to deploy an AWS & Fgt 201 Level Workshop",
+	"Metadata": {
+	},
+	"Parameters": {
+	},
+	"Mappings": {
+	},
+	"Conditions": {
+	},
+	"Resources": {
+		"VPCA": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": {
+					"Fn::Sub": "https://hacorp-cloud-cse-workshop-us-east-1.s3.amazonaws.com/aws-fgt-201/StandaloneVPC_DualAZ.template.json"
+				},
+				"Parameters": {
+					"StackName": "VPC-A",
+					"AZForSubnet1": {
+						"Fn::Select": [
+							0,
+							{
+								"Fn::GetAZs": {
+									"Ref": "AWS::Region"
+								}
+							}
+						]
+					},
+					"AZForSubnet2": {
+						"Fn::Select": [
+							1,
+							{
+								"Fn::GetAZs": {
+									"Ref": "AWS::Region"
+								}
+							}
+						]
+					},
+					"VPCCIDR": "10.1.0.0/16",
+					"UseNatGateway": "No",
+					"PublicSubnet1": "10.1.1.0/24",
+					"PrivateSubnet1": "10.1.2.0/24",
+					"PublicSubnet2": "10.1.10.0/24",
+					"PrivateSubnet2": "10.1.20.0/24"
+				}
+			}
+		},
+		"VPCB": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": {
+					"Fn::Sub": "https://hacorp-cloud-cse-workshop-us-east-1.s3.amazonaws.com/aws-fgt-201/StandaloneVPC_DualAZ.template.json"
+				},
+				"Parameters": {
+					"StackName": "VPC-B",
+					"AZForSubnet1": {
+						"Fn::Select": [
+							0,
+							{
+								"Fn::GetAZs": {
+									"Ref": "AWS::Region"
+								}
+							}
+						]
+					},
+					"AZForSubnet2": {
+						"Fn::Select": [
+							1,
+							{
+								"Fn::GetAZs": {
+									"Ref": "AWS::Region"
+								}
+							}
+						]
+					},
+					"VPCCIDR": "10.2.0.0/16",
+					"UseNatGateway": "Yes",
+					"PublicSubnet1": "10.2.1.0/24",
+					"PrivateSubnet1": "10.2.2.0/24",
+					"PublicSubnet2": "10.2.10.0/24",
+					"PrivateSubnet2": "10.2.20.0/24"
+				}
+			}
+		},
+		"VPCC": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": {
+					"Fn::Sub": "https://hacorp-cloud-cse-workshop-us-east-1.s3.amazonaws.com/aws-fgt-201/StandaloneVPC_DualAZ.template.json"
+				},
+				"Parameters": {
+					"StackName": "VPC-C",
+					"AZForSubnet1": {
+						"Fn::Select": [
+							0,
+							{
+								"Fn::GetAZs": {
+									"Ref": "AWS::Region"
+								}
+							}
+						]
+					},
+					"AZForSubnet2": {
+						"Fn::Select": [
+							1,
+							{
+								"Fn::GetAZs": {
+									"Ref": "AWS::Region"
+								}
+							}
+						]
+					},
+					"VPCCIDR": "10.3.0.0/16",
+					"UseNatGateway": "No",
+					"PublicSubnet1": "10.3.1.0/24",
+					"PrivateSubnet1": "10.3.2.0/24",
+					"PublicSubnet2": "10.3.10.0/24",
+					"PrivateSubnet2": "10.3.20.0/24"
+				}
+			}
+		},
+		"VPCBtoVPCPeering": {
+			"Type": "AWS::EC2::VPCPeeringConnection",
+			"Properties": {
+				"VpcId": {
+					"Fn::GetAtt": "VPCB.Outputs.VPCID"
+				},
+				"PeerVpcId": {
+					"Fn::GetAtt": "VPCC.Outputs.VPCID"
+				},
+				"Tags": [
+					{
+						"Key": "Name",
+						"Value": "VPC-B-to-VPC-C"
+					}
+				]
+			}
+		},
+		"RouteVPCBtoVPCC1": {
+			"Type": "AWS::EC2::Route",
+			"DependsOn": "VPCBtoVPCPeering",
+			"Properties": {
+				"RouteTableId": {
+					"Fn::GetAtt": "VPCB.Outputs.PrivateRouteTable"
+				},
+				"DestinationCidrBlock": "10.3.0.0/16",
+				"VpcPeeringConnectionId": {
+					"Ref": "VPCBtoVPCPeering"
+				}
+			}
+		},
+		"RouteVPCBtoVPCC2": {
+			"Type": "AWS::EC2::Route",
+			"DependsOn": "VPCBtoVPCPeering",
+			"Properties": {
+				"RouteTableId": {
+					"Fn::GetAtt": "VPCB.Outputs.PublicRouteTable"
+				},
+				"DestinationCidrBlock": "10.3.0.0/16",
+				"VpcPeeringConnectionId": {
+					"Ref": "VPCBtoVPCPeering"
+				}
+			}
+		},
+		"RouteVPCCtoVPCB": {
+			"Type": "AWS::EC2::Route",
+			"DependsOn": "VPCBtoVPCPeering",
+			"Properties": {
+				"RouteTableId": {
+					"Fn::GetAtt": "VPCC.Outputs.PrivateRouteTable"
+				},
+				"DestinationCidrBlock": "0.0.0.0/0",
+				"VpcPeeringConnectionId": {
+					"Ref": "VPCBtoVPCPeering"
+				}
+			}
+		},
+		"InstanceA": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": {
+					"Fn::Sub": "https://hacorp-cloud-cse-workshop-us-east-1.s3.amazonaws.com/aws-fgt-201/EC2Workload_ExistingVPC.template.json"
+				},
+				"Parameters": {
+					"StackName": "Instance-A",
+					"VPCID": {
+						"Fn::GetAtt": "VPCA.Outputs.VPCID"
+					},
+					"Subnet": {
+						"Fn::GetAtt": "VPCA.Outputs.PrivateSub1"
+					},
+					"InstanceIP": "10.1.2.10",
+					"PubliclyAvailable": "No",
+					"CIDRForInstanceAccess": "0.0.0.0/0",
+					"TagEnv": "test",
+					"TagAppId": "aus-twf-wrk1",
+					"TagAppRole": "web",
+					"TagAppTier": "frontend",
+					"TagSDNGroup": "group1"
+				}
+			}
+		},
+		"InstanceB": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": {
+					"Fn::Sub": "https://hacorp-cloud-cse-workshop-us-east-1.s3.amazonaws.com/aws-fgt-201/EC2Workload_ExistingVPC.template.json"
+				},
+				"Parameters": {
+					"StackName": "Instance-B",
+					"VPCID": {
+						"Fn::GetAtt": "VPCB.Outputs.VPCID"
+					},
+					"Subnet": {
+						"Fn::GetAtt": "VPCB.Outputs.PrivateSub1"
+					},
+					"InstanceIP": "10.2.2.10",
+					"PubliclyAvailable": "No",
+					"CIDRForInstanceAccess": "0.0.0.0/0",
+					"TagEnv": "test",
+					"TagAppId": "aus-tab-wrk1",
+					"TagAppRole": "api",
+					"TagAppTier": "backend",
+					"TagSDNGroup": "group2"
+				}
+			}
+		},
+		"InstanceC": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": {
+					"Fn::Sub": "https://hacorp-cloud-cse-workshop-us-east-1.s3.amazonaws.com/aws-fgt-201/EC2Workload_ExistingVPC.template.json"
+				},
+				"Parameters": {
+					"StackName": "Instance-C",
+					"VPCID": {
+						"Fn::GetAtt": "VPCC.Outputs.VPCID"
+					},
+					"Subnet": {
+						"Fn::GetAtt": "VPCC.Outputs.PrivateSub1"
+					},
+					"InstanceIP": "10.3.2.10",
+					"PubliclyAvailable": "No",
+					"CIDRForInstanceAccess": "0.0.0.0/0",
+					"TagEnv": "prod",
+					"TagAppId": "aus-pwf-wrk1",
+					"TagAppRole": "web",
+					"TagAppTier": "frontend",
+					"TagSDNGroup": "group2"
+				}
+			}
+		},
+		"Ec2Console": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": {
+					"Fn::Sub": "https://hacorp-cloud-cse-workshop-us-east-1.s3.amazonaws.com/aws-fgt-201/EC2ConsoleEnabler.template.json"
+				}
+			}
+		}
+	},
+	"Outputs": {
+	}
+}
